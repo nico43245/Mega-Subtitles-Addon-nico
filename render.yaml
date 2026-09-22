@@ -1,0 +1,60 @@
+# render.yaml — Blueprint pentru deploy pe Render.
+#
+# Creare: Render Dashboard -> New -> Blueprint -> alegi acest repo.
+# Render citeste fisierul, construieste serviciul si cere DOAR valorile
+# marcate mai jos cu `sync: false`. Restul se configureaza singur.
+#
+# PORT si RENDER_EXTERNAL_URL NU apar aici intentionat: le injecteaza Render
+# automat in orice Web Service, iar codul le citeste de acolo (server.js:920,
+# addon.js:14). Setate manual, ar strica keep-alive-ul si URL-urile din manifest.
+
+services:
+  - type: web
+    name: stremio-ro-subs
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    # Stremio loveste manifest.json la fiecare instalare — e cel mai onest
+    # semnal ca addon-ul chiar raspunde, nu doar ca procesul e viu.
+    healthCheckPath: /manifest.json
+    autoDeploy: true
+    envVars:
+      # Node 22 LTS: better-sqlite3 v13 are prebuild-uri gata compilate pentru
+      # el, deci build-ul nu cade incercand sa compileze nativ pe planul free.
+      - key: NODE_VERSION
+        value: "22"
+
+      # --- Cache (obligatoriu pe Render) -------------------------------------
+      # Discul unui Web Service free se sterge la fiecare redeploy/restart, deci
+      # backend-ul SQLite si-ar pierde cache-ul constant. Prezenta URL-ului de
+      # mai jos comuta automat pe Redis (lib/cacheStore.js:11).
+      # Ambele din Upstash -> baza ta -> tab REST API (NU connection string-ul
+      # clasic de Redis: librariile @upstash/* merg peste HTTP).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
+      # --- Admin -------------------------------------------------------------
+      # Generata random de Render la creare. Default-ul din cod e public (repo
+      # public), deci rutele /admin/* ar fi deschise oricui fara asta.
+      # O citesti oricand din Dashboard -> Environment.
+      - key: ADMIN_KEY
+        generateValue: true
+
+      # --- Surse optionale ---------------------------------------------------
+      # Lasa-le GOALE daca nu folosesti sursa respectiva; codul face fallback
+      # curat si sare peste ea.
+      - key: SUBSRO_API_KEY
+        sync: false
+      # Sesiune personala de login pe Titrari.ro (PHPSESSID) — a ta, nu a
+      # altcuiva: aceeasi sesiune folosita din doua locuri simultan risca sa le
+      # declanseze detectia anti-abuz.
+      - key: TITRARI_COOKIE
+        sync: false
+
+      # RL_API_KEY nu e listata intentionat. Are fallback in cod catre cheia
+      # comuna (server.js:306, lib/regielive.js:6), deci merge nesetata. Adaug-o
+      # manual in Dashboard doar daca primesti vreodata cheie proprie de la
+      # RegieLive.
